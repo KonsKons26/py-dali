@@ -1,3 +1,5 @@
 .venv
 db/
 queries/
+src/__pycache__
+tests/__pycache__
