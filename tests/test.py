@@ -6,26 +6,18 @@ from src.scores import substructure_similarity_score
 
 
 def diagonal_idxs_right_with_offset_generator(
-        arr: np.ndarray,
+        n: int,
         k: int,
         start: int,
-        overlap_contact_patterns: bool,
-        contact_pattern_size: int
+        overlap_contact_patterns: bool
     ) -> Generator[Tuple[int, List[Tuple[int, int]]], None, None]:
     """
-    Get the indices of the elements of the diagonals of a matrix.
 
-    This function generates the indices of the elements in the diagonals of a
-    matrix, starting from a specified column offset (index). The diagonals
-    can overlap or not, depending on the value of `overlap_contact_patterns`.
-    The diagonals are truncated by `k` elements at the end, and only those
-    diagonals that have at least `contact_pattern_size` elements are yielded.
-    The indices are returned as a list of (row, col) tuples.
 
     Parameters
     ----------
-    arr : np.ndarray
-        The array to iterate over.
+    n: int
+        The number of rows (columns) in the square matrix.
     k : int
         The step size for the diagonal iteration AND the number of elements
         to truncate from the end of each diagonal.
@@ -36,10 +28,6 @@ def diagonal_idxs_right_with_offset_generator(
         If True, the step size will be k, meaning that the diagonals will
         overlap. If False, the step size will be 2 * k, meaning that the
         diagonals will not overlap.
-    contact_pattern_size : int
-        The length of the contact patterns to yield. If the number of elements
-        in the diagonal is less than this value, the diagonal will not be
-        yielded.
 
     Yields
     -------
@@ -64,15 +52,14 @@ def diagonal_idxs_right_with_offset_generator(
     else:
         step = 2 * k
 
-    n_cols = arr.shape[1]
-
-    # Iterate over the diagonal
-    for offset in range(start, n_cols-k, step): # offset is the diagonal (col idx)
+    # Iterate over the diagonals, starting from the specified column offset
+    for diag in range(start, n - k + 1, step):
+        # Generate the indices for the diagonal
+        # The diagonal starts at (diag, 0) and goes to (n - k + diag, n - k)
         idxs = []
-        for i in range(offset, n_cols-k+2):
-            idxs.append((i, i - offset))  # (row, col) indices
-        if len(idxs) >= contact_pattern_size:
-            yield offset, idxs
+        for i in range(diag, n - k + 1):
+            idxs.append((i - diag, i))
+        yield diag, idxs
 
 
 def submatrices_from_diagonal_indices_generator(
@@ -112,7 +99,7 @@ def submatrices_from_diagonal_indices_generator(
         - A list of k x k submatrices extracted from the diagonal indices.
     """
     for diag, indxs in diagonal_idxs_right_with_offset_generator(
-        arr, k, start, overlap_contact_patterns, contact_pattern_size
+        arr.shape[0], k, start, overlap_contact_patterns
     ):
         yield diag, [arr[r:r+k, c:c+k] for r, c in indxs]
 
@@ -202,7 +189,6 @@ def reduce_distance_matrix(
         arr, k, contact_pattern_size, start, overlap_contact_patterns
     ):
         pass
-        print(f"Diagonal: {diagonal}, Contact Patterns Index: {idx}, Contact Patterns: {len(contact_patterns)}")
 
 k = 6
 contact_pattern_size = 12
@@ -212,10 +198,8 @@ pdb_files, pdb_names = get_db_pdb_paths_and_names(pdb_path)
 A = get_coords(pdb_files[1], pdb_names[1])
 DA = pairwise_dist(A)
 
-reduce_distance_matrix(
-    DA,
-    k=k,
-    contact_pattern_size=contact_pattern_size,
-    max_contact_patterns=max_contact_patterns,
-    start=k
-)
+
+for d, rc in diagonal_idxs_right_with_offset_generator(
+        DA.shape[0], k, start=k, overlap_contact_patterns=False
+    ):
+    print(d, rc)
