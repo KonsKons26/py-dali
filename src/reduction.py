@@ -164,23 +164,33 @@ def calculate_contact_pattern_score(
         The representative contact pattern is the submatrix with the highest
         average similarity score with all other submatrices.
     """
-    # Initialize the variables
+    num_patterns = len(contact_pattern)
+
+    # Store scores to avoid recalculating symmetric pairs
+    scores_matrix = np.zeros((num_patterns, num_patterns))
+
+    for i in range(num_patterns):
+        # Only compute for j > i
+        for j in range(i + 1, num_patterns):
+            sim_score = substructure_similarity_score(
+                contact_pattern[i], contact_pattern[j]
+            )
+            scores_matrix[i, j] = sim_score
+            scores_matrix[j, i] = sim_score # Store symmetric score
+
     highest_score = -np.inf
     representative = None
 
-    # Iterate through the submatrices in the contact pattern
-    for i in range(len(contact_pattern)):
+    for i in range(num_patterns):
+        # Sum all similarities for current pattern (excluding self)
+        current_score = (
+            np.sum(scores_matrix[i, :]) + np.sum(scores_matrix[:, i])
+        ) / (
+            2 * (num_patterns - 1)
+        )
 
-        # Calculate the average similarity score for the current submatrix
-        # with all other submatrices
-        current_score = np.mean([
-            substructure_similarity_score(
-                contact_pattern[i], contact_pattern[j]
-            )
-            for j in range(len(contact_pattern)) if i != j
-        ])
-
-        # Check if the current score is higher than the highest score
+        # Check if the current score is higher than the highest score found
+        # so far, and update the representative pattern if it is.
         if current_score > highest_score:
             highest_score = current_score
             representative = contact_pattern[i]
@@ -195,7 +205,11 @@ def idxs_overlap(
     """
     Check if two index ranges overlap.
 
-
+    This function checks if the two index ranges represented by the lists of
+    tuples (left, right) overlap. Each tuple represents a range of indices,
+    where the first element is the left index and the second element is the
+    right index. The function returns True if the two index ranges overlap,
+    and False otherwise.
 
     Parameters
     ----------
@@ -230,6 +244,7 @@ def reduce_distance_matrix(
         overlap_contact_patterns: bool,
         contact_pattern_max_size: int,
         contact_pattern_min_size: int,
+        threshold: float,
         max_contact_patterns: int
     ):
     """
@@ -262,6 +277,10 @@ def reduce_distance_matrix(
         The minimum length of the contact patterns to yield. If the number of
         submatrices is less than this value, the submatrices will not be
         yielded.
+    threshold : float
+        The minimum score threshold for a contact pattern to be considered
+        valid. Contact patterns with a score below this threshold will be
+        discarded.
     max_contact_patterns : int
         The maximum number of contact patterns to return in the reduced list.
         If the number of contact patterns exceeds this value, only the top
@@ -287,11 +306,17 @@ def reduce_distance_matrix(
     ):
         current_CP, current_score = calculate_contact_pattern_score(p_CP)
 
+        if current_score < threshold:
+            continue
+
         # If the reduced list is empty, add the current contact pattern to it.
         if not reduced:
             reduced.append((diag, idxs, current_score, current_CP))
 
         else:
+
+            
+
             # Check if the indexes of the current contact pattern overlap with
             # any of the indexes of the contact patterns in the reduced list.
             idxs_overlap_bool_list = []

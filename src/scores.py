@@ -8,12 +8,8 @@ def substructure_similarity_score(
         alpha: float = 20.0
     ) -> float:
     """
-    Calculate the similarity score between two protein submatrices.
-
-    This function computes the similarity score between two protein Distance
-    Matrices (submatrices) using the elastic similarity score. The score is
-    calculated by iterating through each pair of residues in the submatrices and
-    summing their elastic similarity scores.    
+    Calculate the similarity score between two protein submatrices using
+    optimized vectorized operations.
 
     Parameters
     ----------
@@ -31,81 +27,56 @@ def substructure_similarity_score(
     float
         The similarity score between the two protein submatrices.
     """
+    # Ensure matrices have the same shape
+    if submatrix1.shape != submatrix2.shape:
+        raise ValueError("Input submatrices must have the same shape.")
 
-    L = submatrix1.shape[0]
-    S = 0
-    for i in range(L):
-        for j in range(L):
-            S += elastic_similarity_score(
-                i, j, submatrix1, submatrix2, threshold, alpha
-            )
+    # Create a boolean mask for the diagonal elements (i == j)
+    diagonal_mask = np.eye(submatrix1.shape[0], dtype=bool)
+
+    # Calculate scores for diagonal elements (where i == j)
+    # These are simply 'threshold' for all diagonal elements
+    diagonal_scores = np.sum(np.where(diagonal_mask, threshold, 0))
+
+    # Calculate scores for off-diagonal elements (where i != j)
+    # Perform element-wise operations on the entire submatrices
+    m = np.mean(
+        [submatrix1[~diagonal_mask], submatrix2[~diagonal_mask]], axis=0
+    )
+    diff = np.abs(submatrix1[~diagonal_mask] - submatrix2[~diagonal_mask])
+
+    # Replace 0 with a tiny number
+    m_safe = np.where(m == 0, np.finfo(float).eps, m)
+
+    # Calculate the elastic similarity score for off-diagonal elements
+    off_diagonal_scores_array = (
+        threshold - (diff / m_safe)
+    ) * envelope_function(m_safe, alpha)
+
+    # Sum all the scores (diagonal and off-diagonal)
+    S = diagonal_scores + np.sum(off_diagonal_scores_array)
 
     return S
 
 
-def elastic_similarity_score(
-        i: int,
-        j: int,
-        submatrix1: np.ndarray,
-        submatrix2: np.ndarray,
-        threshold: float,
-        alpha: float
-    ) -> float:
-    """
-    Calculate the elastic similarity score between two residues.
-
-    This function computes the elastic similarity score between two elements
-    in the distance matrices of two protein substructures. The score is
-    calculated based on the distance between the residues and a threshold value.
-    The score is adjusted using an envelope function to account for the
-    similarity of the residues.
-
-    Parameters
-    ----------
-    i : int
-        The row index of the substructue.
-    j : int
-        The column index of the substructue.
-    submatrix1 : np.ndarray
-        The first substructure distance matrix.
-    submatrix2 : np.ndarray
-        The second substructure distance matrix.
-    threshold : float
-        The threshold value for similarity.
-    alpha : float
-        The parameter for the envelope function.
-
-    Returns
-    -------
-    float
-        The elastic similarity score between the two residues.
-    """
-
-    if i == j:
-        return threshold
-    else:
-        m = np.mean([submatrix1[i, j], submatrix2[i, j]], axis=0)
-        diff = np.abs(submatrix1[i, j] - submatrix2[i, j])
-        return (threshold - (diff / m)) * envelope_function(m, alpha)
-
-
 def envelope_function(
-        r: float,
+        r: np.ndarray,
         alpha: float
-    ) -> float:
+    ) -> np.ndarray:
     """
-    Calculates the envelope function for the elastic similarity score.
+    Calculates the envelope function for the elastic similarity score,
+    optimized for NumPy arrays.
 
     Parameters
     ----------
-    r : float
-        The average of the distances between the two residues.
+    r : np.ndarray
+        The average of the distances between the two residues (can be an array).
     alpha : float
         The parameter for the envelope function.
 
     Returns
     -------
-    float
-        The value of the envelope function.
+    np.ndarray
+        The value of the envelope function for each element in r.
     """
     return np.exp(-r**2 / alpha**2)
