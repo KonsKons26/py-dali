@@ -19,13 +19,10 @@ def substructure_similarity_score(
     ----------
     submatrix1 : np.ndarray
         The first protein submatrix.
-
     submatrix2 : np.ndarray
         The second protein submatrix.
-
     threshold : float, default=0.2
         The threshold value for similarity.
-
     alpha : float, default=20.0
         The parameter for the envelope function.
 
@@ -67,19 +64,14 @@ def elastic_similarity_score(
     ----------
     i : int
         The row index of the substructue.
-
     j : int
         The column index of the substructue.
-
     submatrix1 : np.ndarray
         The first substructure distance matrix.
-
     submatrix2 : np.ndarray
         The second substructure distance matrix.
-
     threshold : float
         The threshold value for similarity.
-
     alpha : float
         The parameter for the envelope function.
 
@@ -108,7 +100,6 @@ def envelope_function(
     ----------
     r : float
         The average of the distances between the two residues.
-
     alpha : float
         The parameter for the envelope function.
 

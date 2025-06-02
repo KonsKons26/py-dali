@@ -20,7 +20,6 @@ def get_db_pdb_paths_and_names(pdb_dir: str) -> tuple[list[str], list[str]]:
     -------
     pdb_paths : list[str]
         A list of paths to the PDB files.
-
     pdb_names : list[str]
         A list of names of the PDB files (without the .pdb extension).
     """
@@ -49,10 +48,8 @@ def get_coords(pdb_file: str, pid: str, Calpha_only: bool = True) -> np.ndarray:
     ----------
     pdb_file : str
         The path to the PDB file.
-
     pid : str
         The PDB ID of the protein.
-
     Calpha_only : bool = True
         Whether to return only the coordinates of the alpha carbons.
 
@@ -96,10 +93,8 @@ def pairwise_dist(
     ----------
     arr : np.ndarray
         The array of coordinates.
-
     distance_type : str = "euclidean"
         The type of distance to calculate.
-
     **kwargs
         Additional keyword arguments to pass to the pdist() function.
 
