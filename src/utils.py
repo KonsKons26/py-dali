@@ -1,5 +1,10 @@
 import os
 import numpy as np
+import pickle
+import gzip
+import numpy as np
+import time
+from typing import List, Tuple
 from Bio.PDB import PDBParser
 from scipy.spatial.distance import pdist, squareform
 
@@ -76,12 +81,8 @@ def get_coords(pdb_file: str, pid: str, Calpha_only: bool = True) -> np.ndarray:
     return coords
 
 
-def pairwise_dist(
-        arr: np.ndarray,
-        distance_type: str = "euclidean",
-        get_squareform: bool = True,
-        **kwargs
-    ) -> np.ndarray:
+def pairwise_dist(arr: np.ndarray, distance_type: str = "euclidean",
+                  get_squareform: bool = True, **kwargs) -> np.ndarray:
     """
     Calculate the pairwise distance of coordinates in an array.
 
@@ -128,3 +129,202 @@ def pairwise_dist(
         return squareform(pdist(arr, distance_type, **kwargs))
     else:
         return pdist(arr, distance_type, **kwargs)
+
+
+def save_data(data: List[Tuple], filename: str, compression_level: int = 6,
+              optimize_dtypes: bool = True, verbose: bool = False) -> dict:
+    """
+    Save data using compressed pickle format.
+
+    Parameters
+    ----------
+    data: List
+        List of tuples containing data to save.
+    filename: str
+        Output filename (will add .pkl.gz if not present)
+    compression_level: int
+        Compression level 1-9 (6 is good balance of speed/size)
+    optimize_dtypes: bool
+        Whether to optimize data types for smaller file size
+    verbose: bool
+        Whether to print detailed information about the save operation
+
+    Returns
+    -------
+    dict
+        Statistics about the save operation
+    """
+
+    # Ensure filename has correct extension
+    if not filename.endswith('.pkl.gz'):
+        filename = filename + '.pkl.gz'
+
+    start_time = time.time()
+
+    # Optionally optimize data types
+    if optimize_dtypes:
+        data_to_save = _optimize_data_types(data)
+    else:
+        data_to_save = data
+
+    # Save with compression
+    with gzip.open(filename, 'wb', compresslevel=compression_level) as f:
+        pickle.dump(data_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    save_time = time.time() - start_time
+
+    # Get file info
+    import os
+    file_size = os.path.getsize(filename)
+
+    stats = {
+        'filename': filename,
+        'file_size_mb': file_size / (1024 * 1024),
+        'save_time': save_time,
+        'num_items': len(data),
+        'compression_level': compression_level,
+        'optimized': optimize_dtypes
+    }
+
+    if verbose:
+        print(f"Saved {len(data)} items to {filename}")
+        print(f"File size: {stats['file_size_mb']:.2f} MB")
+        print(f"Save time: {save_time:.3f} seconds")
+
+    return stats
+
+
+def load_data(filename: str, verbose: bool = False) -> List[Tuple]:
+    """
+    Load data from compressed pickle format.
+
+    Parameters
+    ----------
+    filename: str
+        Input filename (will add .pkl.gz if not present)
+    verbose: bool
+        Whether to print detailed information about the load operation.
+
+    Returns
+    -------
+    List[Tuple]
+        The loaded data
+
+    Raises
+    ------
+    FileNotFoundError
+        If file doesn't exist
+    pickle.UnpicklingError
+        If file is corrupted
+    """
+
+    # Ensure filename has correct extension
+    if not filename.endswith('.pkl.gz'):
+        filename = filename + '.pkl.gz'
+
+    start_time = time.time()
+
+    try:
+        with gzip.open(filename, 'rb') as f:
+            data = pickle.load(f)
+
+        load_time = time.time() - start_time
+
+        if verbose:
+            print(f"Loaded {len(data)} items from {filename}")
+            print(f"Load time: {load_time:.3f} seconds")
+
+        return data
+
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File '{filename}' not found")
+    except (pickle.UnpicklingError, gzip.BadGzipFile) as e:
+        raise pickle.UnpicklingError(f"Error loading '{filename}': {e}")
+
+
+def _optimize_data_types(data: List[Tuple]) -> List[Tuple]:
+    """
+    Optimize data types to reduce file size while preserving data integrity.
+
+    Parameters
+    ----------
+    data: List[Tuple]
+        Original data list
+
+    Returns
+    -------
+    List[Tuple]
+        Data with optimized types
+    """
+    optimized_data = []
+
+    for item in data:
+        id_val, coords, value, matrix = item
+
+        # Optimize ID - use smallest int type that fits
+        if isinstance(id_val, (int, np.integer)):
+            if -128 <= id_val <= 127:
+                id_optimized = np.int8(id_val)
+            elif -32768 <= id_val <= 32767:
+                id_optimized = np.int16(id_val)
+            elif -2147483648 <= id_val <= 2147483647:
+                id_optimized = np.int32(id_val)
+            else:
+                id_optimized = id_val
+        else:
+            id_optimized = id_val
+
+        # Convert coordinates to numpy array with appropriate dtype
+        if isinstance(coords, list):
+            coords_array = np.array(coords, dtype=np.int32)
+            # Try smaller type if values fit
+            coords_flat = np.array(coords).flatten()
+            if np.all(coords_flat >= -32768) and np.all(coords_flat <= 32767):
+                coords_array = coords_array.astype(np.int16)
+        else:
+            coords_array = coords
+
+        # Optimize float precision if loss is acceptable
+        if isinstance(value, (float, np.floating)):
+            # Use float32 if the value can be represented accurately
+            float32_val = np.float32(value)
+            if abs(float32_val - value) / abs(value) < 1e-6:  # Less than 0.0001% error
+                value_optimized = float32_val
+            else:
+                value_optimized = value
+        else:
+            value_optimized = value
+
+        # Optimize matrix dtype if possible
+        if isinstance(matrix, np.ndarray):
+            if matrix.dtype == np.float64:
+                # Try float32 if precision loss is minimal
+                matrix_f32 = matrix.astype(np.float32)
+                if np.allclose(matrix, matrix_f32, rtol=1e-6):
+                    matrix_optimized = matrix_f32
+                else:
+                    matrix_optimized = matrix
+            else:
+                matrix_optimized = matrix
+        else:
+            matrix_optimized = matrix
+
+        optimized_data.append((
+            id_optimized,
+            coords_array,
+            value_optimized,
+            matrix_optimized
+        ))
+
+    return optimized_data
+
+
+# Convenience functions for quick save/load
+def quick_save(data: List[Tuple], filename: str):
+    """Quick save with default settings."""
+    return save_data(data, filename)
+
+
+def quick_load(filename: str) -> List[Tuple]:
+    """Quick load with default settings."""
+    return load_data(filename)

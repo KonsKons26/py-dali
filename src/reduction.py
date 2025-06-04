@@ -52,8 +52,8 @@ def diagonal_idxs_right_with_offset_generator(
     if start < 0:
         start = k
 
-    # If overlap_contact_patterns is True, the diagonals will overlap, and if it
-    # is False, the diagonals will not overlap.
+    # If overlap_contact_patterns is True, the diagonals will overlap, and if
+    # it is False, the diagonals will not overlap.
     if overlap_contact_patterns:
         step = k
     else:
@@ -122,8 +122,8 @@ def potential_contact_patterns_generator(
         arr.shape[0], k, start, overlap_contact_patterns
     ):
         # Something like a two-pointer method
-        # The tail will be the left part of the sliding window and will go over
-        # all the indeces of the diagonal
+        # The tail will be the left part of the sliding window and will go
+        # over all the indeces of the diagonal
         for tail in range(len(idxs)):
             # The head will be the right part of the sliding window and will
             # be limited by the contact_pattern_max_size
@@ -166,34 +166,26 @@ def calculate_contact_pattern_score(
     """
     num_patterns = len(contact_pattern)
 
-    # Store scores to avoid recalculating symmetric pairs
-    scores_matrix = np.zeros((num_patterns, num_patterns))
-
+    # Pre-calculate all pairwise similarity scores
+    similarity_matrix = np.zeros((num_patterns, num_patterns))
     for i in range(num_patterns):
-        # Only compute for j > i
-        for j in range(i + 1, num_patterns):
-            sim_score = substructure_similarity_score(
+        for j in range(i + 1, num_patterns): # Only compute upper triangle
+            score = substructure_similarity_score(
                 contact_pattern[i], contact_pattern[j]
             )
-            scores_matrix[i, j] = sim_score
-            scores_matrix[j, i] = sim_score # Store symmetric score
+            similarity_matrix[i, j] = score
+            similarity_matrix[j, i] = score # Symmetric matrix
 
-    highest_score = -np.inf
-    representative = None
+    # Calculate the average similarity score for each submatrix
+    np.fill_diagonal(similarity_matrix, 0) # Self-similarity is 0
+    average_scores = np.sum(similarity_matrix, axis=1) / (num_patterns - 1)
 
-    for i in range(num_patterns):
-        # Sum all similarities for current pattern (excluding self)
-        current_score = (
-            np.sum(scores_matrix[i, :]) + np.sum(scores_matrix[:, i])
-        ) / (
-            2 * (num_patterns - 1)
-        )
+    # Find the index of the submatrix with the highest average score
+    best_idx = np.argmax(average_scores)
 
-        # Check if the current score is higher than the highest score found
-        # so far, and update the representative pattern if it is.
-        if current_score > highest_score:
-            highest_score = current_score
-            representative = contact_pattern[i]
+    # Return the representative contact pattern and its score
+    highest_score = average_scores[best_idx]
+    representative = contact_pattern[best_idx]
 
     return representative, highest_score
 
@@ -296,8 +288,8 @@ def reduce_distance_matrix(
         - The score of the contact pattern.
         - The representative contact pattern as a submatrix.
     """
-    # The contact patterns will be stored in this list which will be returned at
-    # the end of the function as the reduced distance matrix.
+    # The contact patterns will be stored in this list which will be returned
+    # at the end of the function as the reduced distance matrix.
     reduced = []
 
     for diag, idxs, p_CP in potential_contact_patterns_generator(
@@ -315,7 +307,7 @@ def reduce_distance_matrix(
 
         else:
 
-            
+            # TODO: find a way to inspect for max_contact_patterns
 
             # Check if the indexes of the current contact pattern overlap with
             # any of the indexes of the contact patterns in the reduced list.
@@ -324,20 +316,20 @@ def reduce_distance_matrix(
                 idxs_overlap_bool_list.append(idxs_overlap(idxs, idxs2))
             for i, overlap_bool in enumerate(idxs_overlap_bool_list):
                 # If the indexes overlap and the current score is higher than
-                # the score of the contact pattern in the reduced list, replace
-                # it.
+                # the score of the contact pattern in the reduced list,
+                # replace it.
                 if overlap_bool:
                     if current_score > reduced[i][2]:
                         reduced[i] = (diag, idxs, current_score, current_CP)
 
-            # If the indexes do not overlap with any of the contact patterns in
-            # the reduced list, add the current contact pattern to the reduced
-            # list.
+            # If the indexes do not overlap with any of the contact patterns
+            # in the reduced list, add the current contact pattern to the
+            # reduced list.
             if not any(idxs_overlap_bool_list):
                 reduced.append((diag, idxs, current_score, current_CP))
 
-    # Sort the reduced list by the score of the contact patterns in descending
-    # order and limit the number of contact patterns to the
+    # Sort the reduced list by the score of the contact patterns in
+    # descending order and limit the number of contact patterns to the
     # max_contact_patterns.
     reduced = sorted(reduced, key=lambda x: x[2], reverse=True)
     return reduced[:max_contact_patterns]

@@ -3,3 +3,4 @@ db/
 queries/
 src/__pycache__
 tests/__pycache__
+claude.py

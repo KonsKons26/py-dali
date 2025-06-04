@@ -1,8 +1,15 @@
 import os
-from src.utils import get_db_pdb_paths_and_names, get_coords, pairwise_dist
+
+from src.utils import (
+    get_db_pdb_paths_and_names, get_coords, pairwise_dist
+)
 from src.reduction import reduce_distance_matrix
 
 
+
+
+
+# Example with sample data
 k = 6
 contact_pattern_size = 12
 contact_pattern_min_size = 6
@@ -23,6 +30,3 @@ reduced = reduce_distance_matrix(
     threshold=threshold,
     max_contact_patterns=max_contact_patterns
 )
-
-for cp in reduced:
-    print(cp)
