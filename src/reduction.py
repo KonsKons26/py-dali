@@ -1,6 +1,12 @@
+import os
 import numpy as np
 from typing import Generator, Tuple, List
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
 from src.scores import substructure_similarity_score
+from src.utils import (
+    get_db_pdb_paths_and_names, get_coords, pairwise_dist, quick_save
+)
 
 
 def diagonal_idxs_right_with_offset_generator(
@@ -333,3 +339,119 @@ def reduce_distance_matrix(
     # max_contact_patterns.
     reduced = sorted(reduced, key=lambda x: x[2], reverse=True)
     return reduced[:max_contact_patterns]
+
+
+def _process_one_pdb(pdb_file, pdb_name, save_path, k, contact_pattern_size,
+                 contact_pattern_min_size, max_contact_patterns, threshold,
+                 C_alpha_only):
+    """Process a single PDB file"""
+    try:
+        coords = get_coords(pdb_file, pdb_name, Calpha_only=C_alpha_only)
+        distance_matrix = pairwise_dist(coords)
+        reduced = reduce_distance_matrix(
+            arr=distance_matrix,
+            k=k,
+            start=k,
+            overlap_contact_patterns=False,
+            contact_pattern_max_size=contact_pattern_size,
+            contact_pattern_min_size=contact_pattern_min_size,
+            threshold=threshold,
+            max_contact_patterns=max_contact_patterns
+        )
+        quick_save(
+            data=reduced,
+            filename=os.path.join(
+                save_path, f"{pdb_name}.pkl.gz"
+            )
+        )
+        return True
+    except Exception as e:
+        print(f"Error processing {pdb_name}: {e}")
+        return False
+
+
+def parallel_reduce(
+        pdb_dir: str,
+        save_path: str,
+        k: int = 6,
+        contact_pattern_size: int = 12,
+        contact_pattern_min_size: int = 6,
+        max_contact_patterns: int = 100,
+        threshold: int = 1,
+        C_alpha_only: bool = True
+    ):
+    """
+    Process PDB files in parallel and reduce their distance matrices.
+
+    This function processes all PDB files in the specified directory,
+    extracting their 3D coordinates, calculating the pairwise distance
+    matrices, and reducing these matrices by extracting contact patterns.
+    The reduced distance matrices are saved in the specified save path as
+    compressed pickle files. The function uses a thread pool to process the
+    PDB files in parallel, improving performance for large datasets.
+
+    Parameters
+    ----------
+    pdb_dir : str
+        The directory containing the PDB files to process.
+    save_path : str
+        The directory where the reduced distance matrices will be saved.
+    k : int, default=6
+        The size of the submatrices to extract from the distance matrix.
+    contact_pattern_size : int, default=12
+        The maximum size of the contact patterns to yield.
+    contact_pattern_min_size : int, default=6
+        The minimum size of the contact patterns to yield.
+    max_contact_patterns : int, default=100
+        The maximum number of contact patterns to return in the reduced list.
+    threshold : int, default=1
+        The minimum score threshold for a contact pattern to be considered
+        valid. Contact patterns with a score below this threshold will be
+        discarded.
+    C_alpha_only : bool, default=True
+        Whether to consider only the C-alpha atoms in the PDB files.
+
+    Returns
+    -------
+    Tuple[List[bool], List[str]]
+        A tuple containing:
+        - A list of booleans indicating whether each PDB file was processed
+          successfully.
+        - A list of PDB names corresponding to the processed files.
+    """
+
+    os.makedirs(save_path, exist_ok=True)
+
+    pdb_files, pdb_names = get_db_pdb_paths_and_names(pdb_dir)
+
+    with ProcessPoolExecutor() as executor:
+        # Submit all tasks
+        futures = [
+            executor.submit(
+                _process_one_pdb,
+                pdb_file,
+                pdb_name,
+                save_path,
+                k,
+                contact_pattern_size,
+                contact_pattern_min_size,
+                max_contact_patterns,
+                threshold,
+                C_alpha_only
+            )
+            for pdb_file, pdb_name in zip(pdb_files, pdb_names)
+        ]
+        
+        # Collect results maintaining order with progress bar
+        results = [None] * len(futures)
+        future_to_index = {future: i for i, future in enumerate(futures)}
+        
+        for future in tqdm(
+            as_completed(futures),
+            total=len(futures),
+            desc="Processing PDB files"
+        ):
+            index = future_to_index[future]
+            results[index] = future.result()
+    
+    return results, pdb_names

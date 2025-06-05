@@ -9,6 +9,7 @@ from Bio.PDB import PDBParser
 from scipy.spatial.distance import pdist, squareform
 
 
+
 def get_db_pdb_paths_and_names(pdb_dir: str) -> tuple[list[str], list[str]]:
     """
     Get the paths and names of PDB files in a directory.
@@ -81,8 +82,12 @@ def get_coords(pdb_file: str, pid: str, Calpha_only: bool = True) -> np.ndarray:
     return coords
 
 
-def pairwise_dist(arr: np.ndarray, distance_type: str = "euclidean",
-                  get_squareform: bool = True, **kwargs) -> np.ndarray:
+def pairwise_dist(
+        arr: np.ndarray,
+        distance_type: str = "euclidean",
+        get_squareform: bool = True,
+        **kwargs
+    ) -> np.ndarray:
     """
     Calculate the pairwise distance of coordinates in an array.
 
@@ -131,8 +136,13 @@ def pairwise_dist(arr: np.ndarray, distance_type: str = "euclidean",
         return pdist(arr, distance_type, **kwargs)
 
 
-def save_data(data: List[Tuple], filename: str, compression_level: int = 6,
-              optimize_dtypes: bool = True, verbose: bool = False) -> dict:
+def save_data(
+        data: List[Tuple],
+        filename: str,
+        compression_level: int = 6,
+        optimize_dtypes: bool = True,
+        verbose: bool = False
+    ) -> dict:
     """
     Save data using compressed pickle format.
 
@@ -328,3 +338,5 @@ def quick_save(data: List[Tuple], filename: str):
 def quick_load(filename: str) -> List[Tuple]:
     """Quick load with default settings."""
     return load_data(filename)
+
+
