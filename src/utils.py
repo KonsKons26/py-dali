@@ -184,7 +184,6 @@ def save_data(
     save_time = time.time() - start_time
 
     # Get file info
-    import os
     file_size = os.path.getsize(filename)
 
     stats = {
