@@ -293,7 +293,7 @@ class MonteCarloProteinAligner:
 
     def run_simulation(
             self,
-            max_iterations: int = 10000,
+            max_iterations: int = 10_000,
             verbose: bool = True
         ) -> ProteinAlignment:
         """Run the Monte Carlo simulation."""

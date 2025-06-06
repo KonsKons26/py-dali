@@ -1,4 +1,5 @@
 import numpy as np
+from typing import List
 
 
 def substructure_similarity_score(
@@ -80,3 +81,24 @@ def envelope_function(
         The value of the envelope function for each element in r.
     """
     return np.exp(-r**2 / alpha**2)
+
+
+def quadratic_mean(
+        scores: List[float]
+    ) -> float:
+    """
+    Calculate the quadratic mean or Root Mean Square (RMS) of a set of scores.
+
+    Parameters
+    ----------
+    scores : np.ndarray
+        An list of similarity scores.
+
+    Returns
+    -------
+    float
+        The RMS of the input scores.
+    """
+    if len(scores) == 0:
+        return 0.0
+    return np.sqrt(np.mean(np.square(scores)))

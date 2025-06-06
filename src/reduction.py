@@ -1,12 +1,12 @@
 import os
 import numpy as np
-from typing import Generator, Tuple, List
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 from src.scores import substructure_similarity_score
 from src.utils import (
     get_db_pdb_paths_and_names, get_coords, pairwise_dist, quick_save
 )
+from typing import Generator, Tuple, List
 
 
 def diagonal_idxs_right_with_offset_generator(
