@@ -22,7 +22,9 @@ class ProteinAlignment:
     contact pattern lists from the aligner.
     """
     pairs: List[Tuple[int, int]] = field(default_factory=list)
-    _score_cache: Dict[Tuple[int, int], float] = field(default_factory=dict, init=False)
+    _score_cache: Dict[Tuple[int, int], float] = field(
+        default_factory=dict, init=False
+    )
 
     @property
     def n(self) -> int:
@@ -51,7 +53,7 @@ class ProteinAlignment:
                     master_patterns_B[j].matrix
                 )
             total_score += self._score_cache[pair_key]
-        
+
         return total_score
 
     def clear_cache(self):
@@ -72,11 +74,11 @@ class MonteCarloAligner:
     Performs a Monte Carlo simulation to find the optimal alignment between two
     sets of contact patterns representing two proteins.
 
-    - The alignment score is calculated as self similarity score over the sum of
-    the substructure similarity scores of the contact patterns.
+    - The alignment score is calculated as the sum of the substructure
+    similarity scores of the contact patterns over the self similarity score.
     - The simulation solves the combinatorial optimization problem by taking
     random steps in the search space of possible alignments, accepting worse
-    solution with a certain probability to escape local minima.
+    solutions with a certain probability to escape local minima.
     - The probability of accepting a move is p = exp(b*(S'-S)), where S' is the
     new score, S is the current score, and b is the inverse temperature
     parameter that controls the exploration of the search space.
@@ -370,270 +372,3 @@ class MonteCarloAligner:
         plt.title("Simulation Convergence History", fontweight="bold")
         plt.tight_layout()
         plt.show()
-
-
-# ---------------------------------------------------------------------------
-#     def _initialize_alignment_smart(self) -> ProteinAlignment:
-#         """Initialize alignment with better strategy for self-alignment."""
-#         if len(self.contact_patterns_A) == len(self.contact_patterns_B):
-#             # For self-alignment, start with diagonal pairs
-#             pairs = [(i, i) for i in range(min(3, len(self.contact_patterns_A)))]
-#             return ProteinAlignment(pairs=pairs)
-#         else:
-#             # For different proteins, use random initialization
-#             return self._initialize_alignment()
-
-#     def _propose_greedy_move(self):
-#         """Propose a move that considers the best available pairings."""
-#         move_type = np.random.choice(["add", "remove", "swap", "greedy_add"])
-        
-#         if move_type == "greedy_add":
-#             return self._greedy_add_contact_pattern()
-#         elif move_type == "add":
-#             return self._add_contact_pattern()
-#         elif move_type == "remove" and self.current_alignment.n > 1:
-#             return self._remove_contact_pattern()
-#         elif move_type == "swap":
-#             return self._swap_contact_pattern()
-#         else:
-#             return self._add_contact_pattern()
-
-#     def _greedy_add_contact_pattern(self) -> ProteinAlignment | None:
-#         """Add the best scoring available pair."""
-#         paired_indices_A = self.current_alignment.get_paired_indices_A()
-#         paired_indices_B = self.current_alignment.get_paired_indices_B()
-
-#         available_A = [i for i in range(len(self.contact_patterns_A)) 
-#                     if i not in paired_indices_A]
-#         available_B = [i for i in range(len(self.contact_patterns_B)) 
-#                     if i not in paired_indices_B]
-
-#         if not available_A or not available_B:
-#             return None
-
-#         # Find the best scoring pair among available options
-#         best_score = -float('inf')
-#         best_pair = None
-        
-#         # Sample a subset to avoid O(n²) complexity
-#         max_samples = min(20, len(available_A) * len(available_B))
-#         sampled_pairs = []
-        
-#         if len(available_A) * len(available_B) <= max_samples:
-#             sampled_pairs = [(i, j) for i in available_A for j in available_B]
-#         else:
-#             for _ in range(max_samples):
-#                 i = np.random.choice(available_A)
-#                 j = np.random.choice(available_B)
-#                 if (i, j) not in sampled_pairs:
-#                     sampled_pairs.append((i, j))
-        
-#         for i, j in sampled_pairs:
-#             score = substructure_similarity_score(
-#                 self.contact_patterns_A[i].matrix,
-#                 self.contact_patterns_B[j].matrix
-#             )
-#             if score > best_score:
-#                 best_score = score
-#                 best_pair = (i, j)
-        
-#         if best_pair:
-#             new_pairs = self.current_alignment.pairs.copy()
-#             new_pairs.append(best_pair)
-#             return ProteinAlignment(pairs=new_pairs)
-        
-#         return None
-
-#     def find_optimal_alignment_exhaustive(self) -> Tuple[ProteinAlignment, float]:
-#         """
-#         Find the true optimal alignment for small problems using a greedy approach.
-#         This is useful for validation and understanding the theoretical maximum.
-#         """
-#         if len(self.contact_patterns_A) > 10 or len(self.contact_patterns_B) > 10:
-#             print("Warning: Exhaustive search only recommended for small problems")
-        
-#         # Greedy approach: iteratively add the best available pair
-#         used_A = set()
-#         used_B = set()
-#         pairs = []
-        
-#         n_pairs = min(len(self.contact_patterns_A), len(self.contact_patterns_B))
-        
-#         for _ in range(n_pairs):
-#             best_score = -float('inf')
-#             best_pair = None
-            
-#             for i in range(len(self.contact_patterns_A)):
-#                 if i in used_A:
-#                     continue
-#                 for j in range(len(self.contact_patterns_B)):
-#                     if j in used_B:
-#                         continue
-                    
-#                     score = substructure_similarity_score(
-#                         self.contact_patterns_A[i].matrix,
-#                         self.contact_patterns_B[j].matrix
-#                     )
-#                     if score > best_score:
-#                         best_score = score
-#                         best_pair = (i, j)
-            
-#             if best_pair:
-#                 pairs.append(best_pair)
-#                 used_A.add(best_pair[0])
-#                 used_B.add(best_pair[1])
-#             else:
-#                 break
-        
-#         optimal_alignment = ProteinAlignment(pairs=pairs)
-#         optimal_score = optimal_alignment.score(
-#             self.contact_patterns_A, self.contact_patterns_B
-#         )
-        
-#         return optimal_alignment, optimal_score
-
-#     # Modified run_simulation method
-#     def run_simulation_enhanced(self, verbose: bool = False, use_smart_moves: bool = True):
-#         """Enhanced simulation with better move proposals."""
-#         # Use smart initialization
-#         self.current_alignment = self._initialize_alignment_smart()
-#         self.best_alignment = deepcopy(self.current_alignment)
-#         self.best_alignment_score = self.best_alignment.score(
-#             self.contact_patterns_A, self.contact_patterns_B
-#         )
-        
-#         self.history = {
-#             "score": [self.best_alignment_score], 
-#             "beta": [self.betas[0]]
-#         }
-        
-#         for i in range(self.iteration_limit):
-#             beta = self.betas[i]
-
-#             if use_smart_moves:
-#                 proposed_alignment = self._propose_greedy_move()
-#             else:
-#                 proposed_alignment = self._propose_move()
-                
-#             if proposed_alignment is None:
-#                 self.history["score"].append(
-#                     self.current_alignment.score(
-#                         self.contact_patterns_A, self.contact_patterns_B
-#                     )
-#                 )
-#                 self.history["beta"].append(beta)
-#                 continue
-
-#             proposed_score = proposed_alignment.score(
-#                 self.contact_patterns_A, self.contact_patterns_B
-#             )
-#             current_score = self.current_alignment.score(
-#                 self.contact_patterns_A, self.contact_patterns_B
-#             )
-
-#             if self._accept_move(proposed_score, current_score, beta):
-#                 self.current_alignment = proposed_alignment
-#                 new_current_score = proposed_score
-#             else:
-#                 new_current_score = current_score
-
-#             if new_current_score > self.best_alignment_score:
-#                 self.best_alignment = deepcopy(self.current_alignment)
-#                 self.best_alignment_score = new_current_score
-
-#             self.history["score"].append(new_current_score)
-#             self.history["beta"].append(beta)
-
-#             if verbose and (i % 1_000 == 0 or i + 1 == self.iteration_limit):
-#                 print(
-#                     f"Iteration {i:<10}\t"
-#                     f"Current Score: {new_current_score:<10.4f}\t"
-#                     f"Best Score: {self.best_alignment_score:<10.4f}",
-#                     end='\r'
-#                 )
-        
-#         print()
-#         return self.best_alignment, self.best_alignment_score, self.history
-
-
-
-
-
-
-
-# def analyze_self_alignment(contact_patterns_A):
-#     """Analyze the theoretical maximum for self-alignment."""
-#     from src.scores import substructure_similarity_score
-    
-#     # Direct sum (your baseline calculation)
-#     direct_sum = sum([
-#         substructure_similarity_score(
-#             contact_patterns_A[i][-1],  # matrix is the last element
-#             contact_patterns_A[i][-1]
-#         )
-#         for i in range(len(contact_patterns_A))
-#     ])
-    
-#     print(f"Direct sum of self-similarities: {direct_sum:.4f}")
-    
-#     # Create aligner instance
-#     aligner = MonteCarloAligner(contact_patterns_A, contact_patterns_A)
-    
-#     # Get theoretical optimum using greedy approach
-#     optimal_alignment, optimal_score = aligner.find_optimal_alignment_exhaustive()
-    
-#     print(f"Greedy optimal alignment score: {optimal_score:.4f}")
-#     print(f"Optimal alignment pairs: {optimal_alignment.pairs}")
-    
-#     # Check if diagonal pairing is optimal
-#     diagonal_pairs = [(i, i) for i in range(len(contact_patterns_A))]
-#     diagonal_alignment = ProteinAlignment(pairs=diagonal_pairs)
-#     diagonal_score = diagonal_alignment.score(
-#         aligner.contact_patterns_A, 
-#         aligner.contact_patterns_B
-#     )
-    
-#     print(f"Diagonal pairing score: {diagonal_score:.4f}")
-    
-#     # Run enhanced Monte Carlo
-#     best_alignment, best_score, history = aligner.run_simulation_enhanced(
-#         verbose=True, use_smart_moves=True
-#     )
-    
-#     print(f"Enhanced MC best score: {best_score:.4f}")
-#     print(f"Enhanced MC best alignment: {best_alignment.pairs}")
-    
-#     # Compare results
-#     print("\n=== COMPARISON ===")
-#     print(f"Direct sum:           {direct_sum:.4f}")
-#     print(f"Diagonal alignment:   {diagonal_score:.4f}")
-#     print(f"Greedy optimal:       {optimal_score:.4f}")
-#     print(f"Enhanced Monte Carlo: {best_score:.4f}")
-    
-#     return {
-#         'direct_sum': direct_sum,
-#         'diagonal_score': diagonal_score,
-#         'optimal_score': optimal_score,
-#         'mc_score': best_score,
-#         'optimal_alignment': optimal_alignment,
-#         'mc_alignment': best_alignment
-#     }
-
-# def debug_score_calculation(aligner, alignment):
-#     """Debug score calculation using the aligner's parsed patterns."""
-#     print("=== ALIGNMENT SCORE BREAKDOWN (Using Aligner) ===")
-#     total = 0
-    
-#     for i, (idx_a, idx_b) in enumerate(alignment.pairs):
-#         score = substructure_similarity_score(
-#             aligner.contact_patterns_A[idx_a].matrix,
-#             aligner.contact_patterns_B[idx_b].matrix
-#         )
-#         total += score
-#         print(f"Pair {i}: ({idx_a}, {idx_b}) -> {score:.4f}")
-    
-#     print(f"Total calculated manually: {total:.4f}")
-#     alignment_score = alignment.score(aligner.contact_patterns_A, aligner.contact_patterns_B)
-#     print(f"Alignment.score() returns: {alignment_score:.4f}")
-    
-#     return total

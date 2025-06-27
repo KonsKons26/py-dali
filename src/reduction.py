@@ -313,7 +313,8 @@ def reduce_distance_matrix(
 
         else:
 
-            # TODO: find a way to inspect for max_contact_patterns
+            # TODO: find a way to inspect for max_contact_patterns, might save
+            # time that way, for now, process all and sort in the end.
 
             # Check if the indexes of the current contact pattern overlap with
             # any of the indexes of the contact patterns in the reduced list.
@@ -441,11 +442,11 @@ def parallel_reduce(
             )
             for pdb_file, pdb_name in zip(pdb_files, pdb_names)
         ]
-        
+
         # Collect results maintaining order with progress bar
         results = [None] * len(futures)
         future_to_index = {future: i for i, future in enumerate(futures)}
-        
+
         for future in tqdm(
             as_completed(futures),
             total=len(futures),
@@ -453,5 +454,5 @@ def parallel_reduce(
         ):
             index = future_to_index[future]
             results[index] = future.result()
-    
+
     return results, pdb_names

@@ -1,108 +1,118 @@
 #!/usr/bin/env python3
-"""
-Script to parse ASTRAL SCOP FASTA file and extract classification info to CSV
+import os
+import pandas as pd
+
+
+help_text = """Parse ASTRAL FASTA files and save the parsed data to a CSV file.
+
+Usage:
+    python parse_astral_fasta.py -i <input_file> -o <output_file>
+    -i, --input      Path to the input FASTA file.
+    -o, --output     Path to the output CSV file for the parsed data.
+
+Example:
+    python parse_astral_fasta.py -i astral_sequences.fa -o parsed_astral.csv
 """
 
-import csv
-import re
-from pathlib import Path
 
-def parse_astral_fasta(fasta_file, output_csv):
-    """
-    Parse ASTRAL FASTA file and extract SCOP classification info
-    
-    Example header:
-    >d1a0pa_ a.1.1.1 (A:) Hemoglobin, alpha chain {Human (Homo sapiens)}
-    """
-    
-    results = []
-    
-    with open(fasta_file, 'r') as f:
+def parse_astral_fasta(sequence_file):
+    parsed = []
+    counter = 0
+    with open(sequence_file, "r") as f:
         for line in f:
-            if line.startswith('>'):
-                # Parse the header line
-                header = line.strip()[1:]  # Remove '>'
-                
-                # Split by spaces to get components
-                parts = header.split()
-                
-                if len(parts) < 3:
-                    print(f"Warning: Skipping malformed header: {header}")
-                    continue
-                
-                # Extract domain ID (e.g., d1a0pa_)
-                domain_id = parts[0]
-                
-                # Extract SCOP classification (e.g., a.1.1.1)
-                scop_class = parts[1]
-                
-                # Extract chain info (e.g., (A:))
-                chain_match = re.search(r'\(([A-Z0-9]+):', header)
-                chain = chain_match.group(1) if chain_match else ''
-                
-                # Extract PDB ID from domain ID (first 4 chars after 'd')
-                pdb_match = re.match(r'd([a-z0-9]{4})', domain_id)
-                if not pdb_match:
-                    print(f"Warning: Could not extract PDB ID from {domain_id}")
-                    continue
-                
-                pdb_id = pdb_match.group(1).upper()
-                
-                # Parse SCOP classification
-                scop_parts = scop_class.split('.')
-                if len(scop_parts) != 4:
-                    print(f"Warning: Unexpected SCOP format: {scop_class}")
-                    continue
-                
-                class_id = scop_parts[0]
-                fold_id = scop_parts[1]
-                superfamily_id = scop_parts[2]
-                family_id = scop_parts[3]
-                
-                results.append({
-                    'Class': class_id,
-                    'Fold': fold_id,
-                    'Superfamily': superfamily_id,
-                    'Family': family_id,
-                    'pdb_id': pdb_id,
-                    'chain': chain,
-                    'domain_id': domain_id,
-                    'full_scop': scop_class
-                })
-    
-    # Write to CSV
-    with open(output_csv, 'w', newline='') as csvfile:
-        fieldnames = ['Class', 'Fold', 'Superfamily', 'Family', 'pdb_id', 'chain', 'domain_id', 'full_scop']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
-        writer.writeheader()
-        for row in results:
-            writer.writerow(row)
-    
-    print(f"Processed {len(results)} entries")
-    print(f"Output written to: {output_csv}")
-    
-    # Print some statistics
-    unique_pdbs = len(set(row['pdb_id'] for row in results))
-    unique_folds = len(set(row['full_scop'] for row in results))
-    print(f"Unique PDB IDs: {unique_pdbs}")
-    print(f"Unique SCOP classifications: {unique_folds}")
-    
-    return results
+            if line.startswith(">"):
+                # Remove ">"
+                header = line.strip()[1:]
+
+                # domain_id
+                domain_id = header.split(" ")[0]
+                header = header.replace(domain_id, "").strip()
+
+                # scop_code
+                scop_code = header.split(" (")[0]
+                header = header.replace(scop_code, "").strip()
+                class_, fold, superfamily, family = scop_code.split(".")
+
+                # pdb_id
+                pdb_id = domain_id[1:5]
+
+                # chain, residues
+                chain_residues = header.split(") ")[0].replace("(", "")
+                header = header.replace(f"({chain_residues})", "").strip()
+                chain_residues_split = chain_residues.split(":")
+                if len(chain_residues_split) == 2:
+                    chain, residues = chain_residues_split
+                else:
+                    chain, residues = chain_residues_split[0], None
+
+                # protein_name
+                protein_name = header.split(" {")[0]
+                header = header.replace(protein_name, "").strip()
+
+                # organism
+                organism = header.replace("}", "").replace("{", "")
+
+                parsed.append([
+                    domain_id,
+                    scop_code,
+                    class_,
+                    fold,
+                    superfamily,
+                    family,
+                    pdb_id,
+                    chain,
+                    residues,
+                    protein_name,
+                    organism,
+                ])
+                counter += 1
+
+    print(f"Parsed {counter} entries from {sequence_file}")
+
+    return parsed
+
+
+def save_parsed_data(parsed, output_file):
+    try:
+        field_names = [
+            "domain_id", "scop_code", "class", "fold", "superfamily", "family",
+            "pdb_id", "chain", "residues", "protein_name", "organism"
+        ]
+        df = pd.DataFrame(parsed, columns=field_names)
+        df.to_csv(output_file, index=False)
+    except Exception as e:
+        print(f"Error saving parsed data: {e}")
+        return False
+    return True
+
+
+def main(input_file, output_file):
+    parsed = parse_astral_fasta(input_file)
+    success = save_parsed_data(parsed, output_file)
+    return success
+
 
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) != 3:
-        print("Usage: python parse_astral_fasta.py <input_fasta> <output_csv>")
-        print("Example: python parse_astral_fasta.py astral-scopedom-seqres-gd-sel-gs-bib-40-2.08.fa scop_data.csv")
-        sys.exit(1)
-    
-    fasta_file = sys.argv[1]
-    output_csv = sys.argv[2]
-    
-    if not Path(fasta_file).exists():
-        print(f"Error: Input file {fasta_file} not found")
-        sys.exit(1)
-    
-    parse_astral_fasta(fasta_file, output_csv)
+    import argparse
+
+    parser = argparse.ArgumentParser(description=help_text)
+    parser.add_argument(
+        "-i", "--input",
+        type=str,
+        required=True,
+        help="Path to the input FASTA file."
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        required=True,
+        help="Path to the output .csv for the parsed data."
+    )
+    args = parser.parse_args()
+    input = args.input
+    output = args.output
+    success = main(input, output)
+    if success:
+        print(f"Parsed data saved to {output}")
+    else:
+        print("Failed to parse data.")
