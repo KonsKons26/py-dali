@@ -1,6 +1,9 @@
 .venv
 db/
 queries/
+logs/
+data/
+tmp/
 src/__pycache__
 tests/__pycache__
 claude.py
