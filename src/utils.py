@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import subprocess
 import random
+import shutil
 import time
 from typing import List, Tuple
 from Bio.PDB import PDBParser
@@ -346,13 +347,15 @@ def select_domains(
         df: pd.DataFrame, n: int, m: int, rng: random.Random
     ) -> dict:
     """
-    Selects `N` queries from the DataFrame and retrieves `m` domains
-    for each query based on the specified criteria.
+    Select 'n' queries from the DataFrame, ensuring each query is from a
+    distinct class, and for each query, select 'm' domains from different
+    categories (different class, same class, same fold, same superfamily,
+    same family).
 
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame containing protein domain information with columns:
+        DataFrame containing protein domain metadata with columns:
         - 'domain_id': Unique identifier for each protein domain.
         - 'class': Class of the protein domain.
         - 'fold': Fold of the protein domain.
@@ -361,26 +364,15 @@ def select_domains(
     n : int
         Number of distinct classes to select queries from.
     m : int
-        Number of domains to select for each query based on the criteria.
+        Number of domains to select for each query from different categories.
     rng : random.Random
-        Random number generator for reproducibility.
+        Random number generator instance for reproducibility.
 
     Returns
     -------
     dict
         A dictionary where keys are the selected query domain IDs and values
-        are dictionaries containing the query information and lists of selected
-        domains based on the specified criteria:
-        - 'query_info': Information about the query domain (class, fold,
-          superfamily, family).
-        - 'different_class': List of `m` domains from different classes.
-        - 'same_class_different_fold': List of `m` domains from the same class
-          but different folds.
-        - 'same_fold_different_superfamily': List of `m` domains from the same
-          fold but different superfamilies.
-        - 'same_superfamily_different_family': List of `m` domains from the same
-          superfamily but different families.
-        - 'same_family': List of `m` domains from the same family.
+        are DataFrames containing the selected domains for each query.
     """
     all_classes = df["class"].unique()
 
@@ -407,7 +399,7 @@ def select_domains(
                 "Skipping selection for this class."
             )
 
-    results = {}
+    new_dfs = {}
 
     for query in queries:
         query_data = df.loc[df["domain_id"] == query].iloc[0]
@@ -416,28 +408,29 @@ def select_domains(
         query_superfamily = query_data["superfamily"]
         query_family = query_data["family"]
 
-        results[query] = {
-            "query_info": {
-                "class": query_class,
-                "fold": query_fold,
-                "superfamily": query_superfamily,
-                "family": query_family
-            },
-            "different_class": [],
-            "same_class_different_fold": [],
-            "same_fold_different_superfamily": [],
-            "same_superfamily_different_family": [],
-            "same_family": []
-        }
+        new_dfs[query] = pd.DataFrame(
+            columns=["domain_id", "class", "fold", "superfamily", "family"]
+        )
+
+        # self
+        new_dfs[query] = pd.concat(
+            [new_dfs[query], df.loc[df["domain_id"] == query]],
+            ignore_index=True
+        )
 
         # --- m domains of different class ---
         potential_different_class = df.loc[
             (df["class"] != query_class),
             "domain_id"
         ].tolist()
-        results[query]["different_class"] = rng.sample(
+        selected_different_class = rng.sample(
             potential_different_class,
             min(m, len(potential_different_class))
+        )
+        new_dfs[query] = pd.concat(
+            [new_dfs[query], df.loc[df["domain_id"].isin(
+                selected_different_class
+            )]], ignore_index=True
         )
 
         # --- m domains of the same class ---
@@ -447,9 +440,14 @@ def select_domains(
             (df["domain_id"] != query),
             "domain_id"
         ].tolist()
-        results[query]["same_class_different_fold"] = rng.sample(
+        selected_same_class = rng.sample(
             potential_same_class,
             min(m, len(potential_same_class))
+        )
+        new_dfs[query] = pd.concat(
+            [new_dfs[query], df.loc[df["domain_id"].isin(
+                selected_same_class
+            )]], ignore_index=True
         )
 
         # --- m domains of the same fold ---
@@ -460,9 +458,14 @@ def select_domains(
             (df["domain_id"] != query),
             "domain_id"
         ].tolist()
-        results[query]["same_fold_different_superfamily"] = rng.sample(
+        selected_same_fold = rng.sample(
             potential_same_fold,
             min(m, len(potential_same_fold))
+        )
+        new_dfs[query] = pd.concat(
+            [new_dfs[query], df.loc[df["domain_id"].isin(
+                selected_same_fold
+            )]], ignore_index=True
         )
 
         # --- m domains of the same superfamily ---
@@ -474,9 +477,14 @@ def select_domains(
             (df["domain_id"] != query),
             "domain_id"
         ].tolist()
-        results[query]["same_superfamily_different_family"] = rng.sample(
+        selected_same_superfamily = rng.sample(
             potential_same_superfamily,
             min(m, len(potential_same_superfamily))
+        )
+        new_dfs[query] = pd.concat(
+            [new_dfs[query], df.loc[df["domain_id"].isin(
+                selected_same_superfamily
+            )]], ignore_index=True
         )
 
         # --- m domains of the same family ---
@@ -488,73 +496,41 @@ def select_domains(
             (df["domain_id"] != query),
             "domain_id"
         ].tolist()
-        results[query]["same_family"] = rng.sample(
+        selected_same_family = rng.sample(
             potential_same_family,
             min(m, len(potential_same_family))
         )
-
-    to_download = []
-
-    for query, data in results.items():
-        to_download.extend(data[
-            "different_class"] + data[
-                "same_class_different_fold"] +  data[
-                    "same_fold_different_superfamily"] +  data[
-                        "same_superfamily_different_family"] + data[
-                            "same_family"])
-
-        print(
-            f"\nQuery: {query} (Class: {data['query_info']['class']}, "
-            f"Fold: {data['query_info']['fold']}, Superfamily: "
-            f"{data['query_info']['superfamily']}, "
-            f"Family: {data['query_info']['family']})"
-        )
-        print(
-            f"  - Different class: {data['different_class']}"
-        )
-        print(
-            "  - Same class, different fold: "
-            f"{data['same_class_different_fold']}"
-        )
-        print(
-            f"  - Same fold, different superfamily: "
-            f"{data['same_fold_different_superfamily']}"
-        )
-        print(
-            f"  - Same superfamily, different family: "
-            f"{data['same_superfamily_different_family']}"
-        )
-        print(
-            f"  - Same family: {data['same_family']}"
+        new_dfs[query] = pd.concat(
+            [new_dfs[query], df.loc[df["domain_id"].isin(
+                selected_same_family
+            )]], ignore_index=True
         )
 
-    return queries, to_download
+    return new_dfs
 
 
-def download_and_process_domains(df: pd.DataFrame, output_folder: str):
+def download_and_process_domains(d: dict[str, pd.DataFrame], output_folder: str):
     """
-    Downloads PDB files, selects specific chains and residues, and saves them
-    as new PDB files named after their domain_id.
+    Downloads and processes PDB domain files based on a dictionary of DataFrames,
+    organizing them into a specific directory structure.
 
-    This function relies on the command-line tools 'wget', 'pdb_selchain', and
-    'pdb_selres'. Ensure these are installed and accessible in your system's PATH.
+    For each key-value pair in the input dictionary 'd':
+    1. A directory named after the key (domain_id) is created in the `output_folder`.
+    2. The PDB file corresponding to the key's domain_id is processed and saved in this new directory.
+    3. A 'queries' subdirectory is created within the key's directory.
+    4. All other PDB files listed in the DataFrame (the value of the pair) are processed and
+       saved in the 'queries' subdirectory.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing the following columns:
-        - 'domain_id': Unique identifier for each protein domain.
-        - 'pdb_id': PDB ID of the protein.
-        - 'chain': Chain identifier to select from the PDB file.
-        - 'residues': Optional string specifying residues to select
-        (e.g., "1-10, 20-30").
-    output_folder : str
-        Directory where the processed PDB files will be saved. If it does not
-        exist, it will be created.
+    Args:
+        d (dict[str, pd.DataFrame]): A dictionary where each key is a domain_id (string)
+            and each value is a DataFrame. The DataFrame contains columns like
+            'domain_id', 'pdb_id', 'chain', and 'residues'.
+        output_folder (str): The path to the main output directory where the
+            domain-specific folders will be created.
     """
-    # Create the output directory if it doesn't exist
+    # Create the main output directory if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
-    
+
     # Base URL for PDB file downloads
     PDB_DOWNLOAD_URL = "https://files.rcsb.org/download/"
 
@@ -562,50 +538,30 @@ def download_and_process_domains(df: pd.DataFrame, output_folder: str):
         f"Starting domain processing. Output will be saved in '{output_folder}'"
     )
 
-    # Iterate over each row of the DataFrame
-    for index, row in df.iterrows():
-        domain_id = row["domain_id"]
-        pdb_id = row["pdb_id"]
-        chain = row["chain"]
-        # pd.isna() correctly handles None, np.nan, etc.
-        residues = row["residues"] if pd.notna(row["residues"]) and row["residues"] else None
-
-        output_filename = os.path.join(output_folder, f"{domain_id}.pdb")
-        
+    def process_pdb(domain_id, pdb_id, chain, residues, save_path):
+        """Helper function to process a single PDB entry."""
         print(
             f"\nProcessing domain: {domain_id} "
             f"(PDB: {pdb_id}, Chain: {chain})..."
         )
 
         # --- Construct the processing pipeline ---
-        
-        # 1. Download the PDB file to standard output
-        #    -q is for quiet mode, -O- sends the file to stdout
         download_cmd = f"wget -qO- {PDB_DOWNLOAD_URL}{pdb_id}.pdb"
-        
-        # 2. Select the specified chain
         select_chain_cmd = f"pdb_selchain -{chain}"
-        
-        # 3. Build the full command pipeline
         pipeline_cmd = f"{download_cmd} | {select_chain_cmd}"
-        
-        # 4. Add residue selection if 'residues' are specified
-        if residues:
-            residues = residues.split("-")
-            residues = ":".join(residues)  # join with ':' for pdb_selres
-            print(f"  -> Selecting residues: '{residues}'")
-            # Enclose residues in quotes to handle complex selections safely
-            select_residues_cmd = f"pdb_selres -'{residues}'"
+
+        if residues and pd.notna(residues):
+            processed_residues = str(residues).replace("-", ":")
+            print(f"  -> Selecting residues: '{processed_residues}'")
+            select_residues_cmd = f"pdb_selres -'{processed_residues}'"
             pipeline_cmd += f" | {select_residues_cmd}"
         else:
             print("  -> Selecting entire chain (no residues specified).")
-            
-        # 5. Redirect the final output to the destination file
-        pipeline_cmd += f" > {output_filename}"
-        
+
+        pipeline_cmd += f" > {save_path}"
+
         # --- Execute the command ---
         try:
-            # Using shell=True to interpret the pipeline correctly
             process = subprocess.run(
                 pipeline_cmd,
                 shell=True,
@@ -613,11 +569,52 @@ def download_and_process_domains(df: pd.DataFrame, output_folder: str):
                 capture_output=True,
                 text=True
             )
-            print(f"  -> SUCCESS: Saved to {output_filename}")
+            print(f"  -> SUCCESS: Saved to {save_path}")
         except subprocess.CalledProcessError as e:
             print(f"  -> ERROR processing {domain_id}.")
             print(f"     Command failed with exit code {e.returncode}.")
             print(f"     Stderr: {e.stderr.strip()}")
-            # Clean up the empty or partially created file on error
-            if os.path.exists(output_filename):
-                os.remove(output_filename)
+            if os.path.exists(save_path):
+                os.remove(save_path)
+
+    for key_domain_id, df in d.items():
+        print(f"\nProcessing main query: {key_domain_id}...")
+        
+        # Create a directory for the key_domain_id
+        key_specific_folder = os.path.join(output_folder, key_domain_id)
+        os.makedirs(key_specific_folder, exist_ok=True)
+        
+        # Create a 'queries' subdirectory
+        queries_folder = os.path.join(key_specific_folder, 'queries')
+        os.makedirs(queries_folder, exist_ok=True)
+
+        # Find the row corresponding to the key_domain_id to process it first
+        key_row = df[df['domain_id'] == key_domain_id]
+        if not key_row.empty:
+            row = key_row.iloc[0]
+            output_filename = os.path.join(key_specific_folder, f"{key_domain_id}.pdb")
+            process_pdb(
+                row["domain_id"],
+                row["pdb_id"],
+                row["chain"],
+                row.get("residues"),  # Use .get() for safe access
+                output_filename
+            )
+        else:
+            print(f"  -> WARNING: Main domain {key_domain_id} not found in its own DataFrame.")
+
+        # Process the rest of the PDBs in the DataFrame and save them in the 'queries' folder
+        print(f"\nProcessing associated queries for {key_domain_id}...")
+        for index, row in df.iterrows():
+            # Skip the key_domain_id itself as it's already processed
+            if row["domain_id"] == key_domain_id:
+                continue
+
+            output_filename = os.path.join(queries_folder, f"{row['domain_id']}.pdb")
+            process_pdb(
+                row["domain_id"],
+                row["pdb_id"],
+                row["chain"],
+                row.get("residues"),
+                output_filename
+            )

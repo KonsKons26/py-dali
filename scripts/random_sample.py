@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 import pandas as pd
 import random
-from src.utils import select_domains, download_and_process_domains
+import os
+from src.utils import select_domains, download_and_process_domains, move_query_files
 
 
 help_text = """Select random samples from the astral dataset and download their
 domains. This script allows you to specify the number of queries and
 samples per query, and it will randomly select domains from the provided
-DataFrame.
+DataFrame. After downloading, query files can be moved to a separate folder.
 
 Usage:
-    python random_sample.py -n <num_queries> -m <num_samples> -d <dataframe> -b <db_path> -s <seed>
+    python random_sample.py -n <num_queries> -m <num_samples> -d <dataframe> -b <db_path> -s <seed> [-q <query_folder>]
 
 Arguments:
     -n, --num_queries: Number of queries to select from the dataset (default: 5).
@@ -18,10 +19,12 @@ Arguments:
     -d, --dataframe: Path to the input DataFrame CSV file containing domain information.
     -b, --db_path: Path to the directory where the downloaded domains will be saved.
     -s, --seed: Random seed for reproducibility (default: 42).
+    -q, --query_folder: Path to the folder where query files should be moved after downloading (optional).
 """
 
-
-def main(n, m, df_path, db_path, seed):
+def main(n, m, df_path, db_path, seed, query_folder=None):
+    os.makedirs(db_path, exist_ok=True)
+    os.makedirs(query_folder, exist_ok=True) if query_folder else None
     rng = random.Random(seed)
     df = pd.read_csv(df_path)
     queries, to_download = select_domains(df, n, m, rng)
@@ -34,12 +37,14 @@ def main(n, m, df_path, db_path, seed):
     ]
     print("\n---Downloading---\n")
     download_and_process_domains(to_download_df, db_path)
+    if query_folder:
+        print("\n---Moving Query Files---\n")
+        move_query_files(queries, db_path, query_folder)
     print("\n---Done---\n")
 
 
 if __name__ == "__main__":
     import argparse
-
     parser = argparse.ArgumentParser(description=help_text)
     parser.add_argument(
         "-n", "--num_queries",
@@ -74,10 +79,17 @@ if __name__ == "__main__":
         required=False,
         help="Random seed for reproducibility."
     )
+    parser.add_argument(
+        "-q", "--query_folder",
+        type=str,
+        required=False,
+        help="Path to the folder where query files should be moved after downloading."
+    )
     args = parser.parse_args()
     n = args.num_queries
     m = args.num_samples
     df_path = args.dataframe
     db_path = args.db_path
     seed = args.seed
-    main(n, m, df_path, db_path, seed)
+    query_folder = args.query_folder
+    main(n, m, df_path, db_path, seed, query_folder)
