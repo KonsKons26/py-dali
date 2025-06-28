@@ -509,24 +509,31 @@ def select_domains(
     return new_dfs
 
 
-def download_and_process_domains(d: dict[str, pd.DataFrame], output_folder: str):
+def download_and_process_domains(
+        d: dict[str, pd.DataFrame], output_folder: str
+    ) -> None:
     """
     Downloads and processes PDB domain files based on a dictionary of DataFrames,
     organizing them into a specific directory structure.
 
     For each key-value pair in the input dictionary 'd':
-    1. A directory named after the key (domain_id) is created in the `output_folder`.
-    2. The PDB file corresponding to the key's domain_id is processed and saved in this new directory.
-    3. A 'queries' subdirectory is created within the key's directory.
-    4. All other PDB files listed in the DataFrame (the value of the pair) are processed and
-       saved in the 'queries' subdirectory.
+    1. A directory named after the key (domain_id) is created in the
+        `output_folder`.
+    2. The PDB file corresponding to the key's domain_id is processed and saved
+        in this new directory.
+    3. A 'references' subdirectory is created within the key's directory.
+    4. All other PDB files listed in the DataFrame (the value of the pair) are
+        processed and saved in the 'references' subdirectory.
 
-    Args:
-        d (dict[str, pd.DataFrame]): A dictionary where each key is a domain_id (string)
-            and each value is a DataFrame. The DataFrame contains columns like
-            'domain_id', 'pdb_id', 'chain', and 'residues'.
-        output_folder (str): The path to the main output directory where the
-            domain-specific folders will be created.
+    Parammeters
+    ----------
+    d : dict[str, pd.DataFrame]
+        A dictionary where each key is a domain_id (string) and each value is a
+        DataFrame containing PDB metadata. The DataFrame should have columns
+        like 'domain_id', 'pdb_id', 'chain', and optionally 'residues'.
+    output_folder : str
+        The path to the main output directory where the domain-specific folders
+        will be created.
     """
     # Create the main output directory if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
@@ -548,7 +555,8 @@ def download_and_process_domains(d: dict[str, pd.DataFrame], output_folder: str)
         # --- Construct the processing pipeline ---
         download_cmd = f"wget -qO- {PDB_DOWNLOAD_URL}{pdb_id}.pdb"
         select_chain_cmd = f"pdb_selchain -{chain}"
-        pipeline_cmd = f"{download_cmd} | {select_chain_cmd}"
+        select_model_cmd = "pdb_selmodel -1"
+        pipeline_cmd = f"{download_cmd} | {select_chain_cmd} | {select_model_cmd}"
 
         if residues and pd.notna(residues):
             processed_residues = str(residues).replace("-", ":")
@@ -584,15 +592,17 @@ def download_and_process_domains(d: dict[str, pd.DataFrame], output_folder: str)
         key_specific_folder = os.path.join(output_folder, key_domain_id)
         os.makedirs(key_specific_folder, exist_ok=True)
         
-        # Create a 'queries' subdirectory
-        queries_folder = os.path.join(key_specific_folder, 'queries')
-        os.makedirs(queries_folder, exist_ok=True)
+        # Create a 'references' subdirectory
+        references_folder = os.path.join(key_specific_folder, 'references')
+        os.makedirs(references_folder, exist_ok=True)
 
         # Find the row corresponding to the key_domain_id to process it first
         key_row = df[df['domain_id'] == key_domain_id]
         if not key_row.empty:
             row = key_row.iloc[0]
-            output_filename = os.path.join(key_specific_folder, f"{key_domain_id}.pdb")
+            output_filename = os.path.join(
+                key_specific_folder, f"{key_domain_id}.pdb"
+            )
             process_pdb(
                 row["domain_id"],
                 row["pdb_id"],
@@ -601,16 +611,22 @@ def download_and_process_domains(d: dict[str, pd.DataFrame], output_folder: str)
                 output_filename
             )
         else:
-            print(f"  -> WARNING: Main domain {key_domain_id} not found in its own DataFrame.")
+            print(
+                f"  -> WARNING: Main domain {key_domain_id} not found in its "
+                "own DataFrame."
+            )
 
-        # Process the rest of the PDBs in the DataFrame and save them in the 'queries' folder
-        print(f"\nProcessing associated queries for {key_domain_id}...")
+        # Process the rest of the PDBs in the DataFrame and save them in the
+        # 'references' folder
+        print(f"\nProcessing associated references for {key_domain_id}...")
         for index, row in df.iterrows():
             # Skip the key_domain_id itself as it's already processed
             if row["domain_id"] == key_domain_id:
                 continue
 
-            output_filename = os.path.join(queries_folder, f"{row['domain_id']}.pdb")
+            output_filename = os.path.join(
+                references_folder, f"{row['domain_id']}.pdb"
+            )
             process_pdb(
                 row["domain_id"],
                 row["pdb_id"],
