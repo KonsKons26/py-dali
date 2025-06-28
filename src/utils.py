@@ -10,6 +10,7 @@ import shutil
 import time
 from typing import List, Tuple
 from Bio.PDB import PDBParser
+from Bio.SVDSuperimposer import SVDSuperimposer
 from scipy.spatial.distance import pdist, squareform
 
 
@@ -634,3 +635,45 @@ def download_and_process_domains(
                 row.get("residues"),
                 output_filename
             )
+
+
+
+def calculate_best_rmsd(coords1: np.ndarray, coords2: np.ndarray):
+    """
+    Calculate the best RMSD between two sets of coordinates by sliding a
+    window of size n over both sets and finding the minimum RMSD.
+
+    Parameters
+    ----------
+    coords1 : np.ndarray
+        The first set of coordinates (e.g., from a PDB file).
+    coords2 : np.ndarray
+        The second set of coordinates (e.g., from a PDB file).
+
+    Returns
+    -------
+    tuple
+        A tuple containing the best RMSD value and the number of atoms (n)
+        used in the calculation.
+    """
+    len1, len2 = len(coords1), len(coords2)
+    n = min(len1, len2)
+
+    if n == 0:
+        raise ValueError("No overlapping atoms to calculate RMSD.")
+
+    best_rmsd = float('inf')
+
+    # Slide window of size n over coords1 and coords2
+    for i in range(len1 - n + 1):
+        seg1 = coords1[i:i+n]
+        for j in range(len2 - n + 1):
+            seg2 = coords2[j:j+n]
+            sup = SVDSuperimposer()
+            sup.set(seg1, seg2)
+            sup.run()
+            rmsd = sup.get_rms()
+            if rmsd < best_rmsd:
+                best_rmsd = rmsd
+
+    return best_rmsd, n

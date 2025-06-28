@@ -119,6 +119,47 @@ class MonteCarloAligner:
                 betas_range[1],
                 num=iteration_limit
             )
+        elif self.betas_mode == "U":
+            # "U" shape to allow for different start and end heights. 
+            # betas_range should now be [min_beta, start_beta, end_beta,
+            # min_beta_position]
+            # where:
+            # - min_beta: the lowest point of the U
+            # - start_beta: the beta value at the beginning (iteration 0)
+            # - end_beta: the beta value at the end (iteration_limit - 1)
+            # - min_beta_position: a float between 0 and 1 indicating where the
+            #   minimum occurs (e.g., 0.5 for middle)
+            if len(betas_range) != 4:
+                raise ValueError(
+                    "For 'U' mode, betas_range must contain "
+                    "[min_beta, start_beta, end_beta, min_beta_position]."
+                )
+            min_beta = betas_range[0]
+            start_beta = betas_range[1]
+            end_beta = betas_range[2]
+            min_beta_position = betas_range[3]
+            if not (0 <= min_beta_position <= 1):
+                raise ValueError("min_beta_position must be between 0 and 1.")
+            if not (start_beta >= min_beta and end_beta >= min_beta):
+                raise ValueError(
+                    "Start and end beta values must be greater than or equal to min_beta."
+                )
+            self.betas = np.zeros(self.iteration_limit)
+            # Calculate the iteration index for the minimum beta
+            min_idx = int(self.iteration_limit * min_beta_position)
+            # First segment: from start_beta to min_beta
+            if min_idx > 0:
+                self.betas[:min_idx] = np.linspace(
+                    start_beta, min_beta, num=min_idx
+                )
+            # Second segment: from min_beta to end_beta
+            if min_idx < self.iteration_limit:
+                self.betas[min_idx:] = np.linspace(
+                    min_beta, end_beta, num=self.iteration_limit - min_idx
+                )
+            # Ensure the minimum point is exactly min_beta if min_idx is valid
+            if 0 <= min_idx < self.iteration_limit:
+                self.betas[min_idx] = min_beta
         else:
             raise ValueError(
                 "betas_mode must be either 'exponential', 'linear'."
@@ -321,11 +362,15 @@ class MonteCarloAligner:
                     f"Best Score: {self.best_alignment_score:<10.4f}",
                     end='\r'
                 )
-        
-        print()
+
         return self.best_alignment, self.best_alignment_score, self.history
 
-    def plot_convergence(self):
+    def plot_convergence(
+            self,
+            title: str = "Monte Carlo Simulation Convergence",
+            show: bool = True,
+            filename: str = None
+        ):
         """Plot the convergence history of the simulation on a single plot with
         dual axes."""
         _, ax1 = plt.subplots(figsize=(10, 6))
@@ -369,6 +414,12 @@ class MonteCarloAligner:
         )
         plt.setp(legend.get_texts(), fontweight="bold")
 
-        plt.title("Simulation Convergence History", fontweight="bold")
-        plt.tight_layout()
-        plt.show()
+        plt.title(title, fontweight="bold")
+
+        if filename:
+            plt.savefig(filename, dpi=300, bbox_inches="tight")
+            plt.close()
+
+        if show:
+            plt.tight_layout()
+            plt.show()
