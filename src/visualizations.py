@@ -146,22 +146,6 @@ def create_protein_comparison_plot(csv_file_path, figsize=(14, 8)):
         alpha=0.2, color=rmsd_color, label="95% CI (RMSD)"
         )
 
-    # Highlight the query point (first region, first position)
-    query_pos = 0
-    query_mca = 1.0  # By definition, relative to itself
-    query_rmsd = df.iloc[0]["rmsd_plot"]
-
-    ax1.scatter(
-        query_pos, query_mca,
-        color=mca_color, s=300, marker="*", edgecolor="black", linewidth=1,
-        zorder=10
-    )
-    ax2.scatter(
-        query_pos, query_rmsd,
-        color=rmsd_color, s=250, marker="*", edgecolor="black", linewidth=1,
-        zorder=10
-    )
-
     # Customize axes
     ax1.set_xlabel(
         "Structural Similarity Level",

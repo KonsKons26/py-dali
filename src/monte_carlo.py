@@ -95,8 +95,8 @@ class MonteCarloAligner:
             contact_patterns_A: List[Tuple],
             contact_patterns_B: List[Tuple],
             iteration_limit: int = 100_000,
-            betas_range: List[float] = [1.0, 100.0],
             betas_mode: str = "exponential",
+            betas_range: List[float] = [1.0, 100.0],
             reheat: bool = True,
         ):
         # This part is the same
@@ -113,25 +113,39 @@ class MonteCarloAligner:
                     np.log(betas_range[1]),
                     num=iteration_limit)
             )
+        elif self.betas_mode == "logarithmic":
+            t = np.linspace(1, np.e, num=self.iteration_limit)
+            log_t = np.log(t)
+            self.betas = betas_range[0] + (
+                betas_range[1] - betas_range[0]) * log_t
+        elif self.betas_mode == "constant":
+            try:
+                betas_range = float(betas_range)
+            except ValueError:
+                raise ValueError(
+                    "For 'constant' mode, betas_range must be a single "
+                    "float value."
+                )
+            self.betas = np.full(iteration_limit, betas_range)
         elif self.betas_mode == "linear":
             self.betas = np.linspace(
                 betas_range[0],
                 betas_range[1],
                 num=iteration_limit
             )
-        elif self.betas_mode == "U":
-            # "U" shape to allow for different start and end heights. 
+        elif self.betas_mode == "V":
+            # "V" shape to allow for different start and end heights. 
             # betas_range should now be [min_beta, start_beta, end_beta,
             # min_beta_position]
             # where:
-            # - min_beta: the lowest point of the U
+            # - min_beta: the lowest point of the V
             # - start_beta: the beta value at the beginning (iteration 0)
             # - end_beta: the beta value at the end (iteration_limit - 1)
             # - min_beta_position: a float between 0 and 1 indicating where the
             #   minimum occurs (e.g., 0.5 for middle)
             if len(betas_range) != 4:
                 raise ValueError(
-                    "For 'U' mode, betas_range must contain "
+                    "For 'V' mode, betas_range must contain "
                     "[min_beta, start_beta, end_beta, min_beta_position]."
                 )
             min_beta = betas_range[0]
@@ -160,9 +174,95 @@ class MonteCarloAligner:
             # Ensure the minimum point is exactly min_beta if min_idx is valid
             if 0 <= min_idx < self.iteration_limit:
                 self.betas[min_idx] = min_beta
+        elif self.betas_mode == "U":
+            # "U" shape with exponential curves to allow for different start and
+            # end heights. betas_range should now be [min_beta, start_beta,
+            # end_beta, min_beta_position, decay_rate, growth_rate]
+            # where:
+            # - min_beta: the lowest point of the U
+            # - start_beta: the beta value at the beginning (iteration 0)
+            # - end_beta: the beta value at the end (iteration_limit - 1)
+            # - min_beta_position: a float between 0 and 1 indicating where the
+            #   minimum occurs (e.g., 0.5 for middle)
+            # - decay_rate: controls how fast the exponential decay is
+            #   (higher = faster)
+            # - growth_rate: controls how fast the exponential growth is
+            #   (higher = faster)
+            if len(betas_range) != 6:
+                raise ValueError(
+                    "For 'U' mode, betas_range must contain "
+                    "[min_beta, start_beta, end_beta, min_beta_position, "
+                    "decay_rate, growth_rate]."
+                )
+            min_beta = betas_range[0]
+            start_beta = betas_range[1]
+            end_beta = betas_range[2]
+            min_beta_position = betas_range[3]
+            decay_rate = betas_range[4]
+            growth_rate = betas_range[5]
+            
+            if not (0 <= min_beta_position <= 1):
+                raise ValueError("min_beta_position must be between 0 and 1.")
+            if not (start_beta >= min_beta and end_beta >= min_beta):
+                raise ValueError(
+                    "Start and end beta values must be greater than or equal "
+                    "to min_beta."
+                )
+            if decay_rate <= 0 or growth_rate <= 0:
+                raise ValueError("Decay and growth rates must be positive.")
+                
+            self.betas = np.zeros(self.iteration_limit)
+            # Calculate the iteration index for the minimum beta
+            min_idx = int(self.iteration_limit * min_beta_position)
+            
+            # First segment: exponential decay from start_beta to min_beta
+            if min_idx > 0:
+                t1 = np.linspace(0, 1, num=min_idx)
+                # Exponential decay: y = (start - min) * exp(-decay_rate * t)
+                # + min
+                self.betas[:min_idx] = (start_beta - min_beta) * np.exp(
+                    -decay_rate * t1) + min_beta
+            
+            # Second segment: exponential growth from min_beta to end_beta
+            if min_idx < self.iteration_limit:
+                t2 = np.linspace(0, 1, num=self.iteration_limit - min_idx)
+                # Exponential growth: y = min + (end - min) * (exp(growth_rate
+                # * t) - 1) / (exp(growth_rate) - 1)
+                exp_factor = np.exp(growth_rate)
+                self.betas[min_idx:] = min_beta + (end_beta - min_beta) * (
+                    np.exp(growth_rate * t2) - 1) / (exp_factor - 1)
+            
+            # Ensure the minimum point is exactly min_beta if min_idx is valid
+            if 0 <= min_idx < self.iteration_limit:
+                self.betas[min_idx] = min_beta
+        elif self.betas_mode == "sigmoid":
+            # Sigmoid function to create a smooth transition between start and
+            # end beta values.
+            if len(betas_range) != 4:
+                raise ValueError(
+                    "For 'sigmoid' mode, betas_range must contain "
+                    "[start_beta, end_beta, steepness, center_position]."
+                )
+            start_beta = betas_range[0]
+            end_beta = betas_range[1]
+            steepness = betas_range[2]
+            center_position = betas_range[3]  # 0.5=middle, 0.3=earlier, etc.
+            
+            if steepness <= 0:
+                raise ValueError("Steepness must be a positive value.")
+            if not (0 <= center_position <= 1):
+                raise ValueError("Center position must be between 0 and 1.")
+            
+            # Map iterations to sigmoid input range, centered at specified
+            # position
+            t = np.linspace(0, 1, num=self.iteration_limit)
+            sigmoid_input = steepness * (t - center_position) * 12
+            self.betas = start_beta + (end_beta - start_beta) / (
+                1 + np.exp(-sigmoid_input)
+            )
         else:
             raise ValueError(
-                "betas_mode must be either 'exponential', 'linear'."
+                "betas_mode must be either 'exponential', 'linear', or 'V'."
             )
 
         self.current_alignment = self._initialize_alignment()
