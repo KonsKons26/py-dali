@@ -384,7 +384,8 @@ class MonteCarloAligner:
             color=color, linewidth=3
         )
         ax1.tick_params(axis="y", labelcolor=color)
-        ax1.set_ylim(0, max(self.history["score"]) * 1.1)
+        if max(self.history["score"]) > 0:
+            ax1.set_ylim(0, max(self.history["score"]) * 1.1)
 
         for label in (ax1.get_xticklabels() + ax1.get_yticklabels()):
             label.set_fontweight("bold")

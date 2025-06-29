@@ -339,7 +339,11 @@ def reduce_distance_matrix(
     # descending order and limit the number of contact patterns to the
     # max_contact_patterns.
     reduced = sorted(reduced, key=lambda x: x[2], reverse=True)
-    return reduced[:max_contact_patterns]
+    if len(reduced) > max_contact_patterns:
+        # If the number of contact patterns exceeds the max_contact_patterns,
+        # truncate the list to the max_contact_patterns.
+        reduced = reduced[:max_contact_patterns]
+    return reduced
 
 
 def _process_one_pdb(pdb_file, pdb_name, save_path, k, contact_pattern_size,
