@@ -3,3 +3,5 @@ logs/
 logs/**
 data/
 data/**
+src/__pycache__/
+*.pyc
