@@ -1,8 +1,5 @@
 .venv
-db/
-queries/
 logs/
+logs/**
 data/
-src/__pycache__
-tests/__pycache__
-claude.py
+data/**
